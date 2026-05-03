@@ -1,0 +1,9 @@
+# Javascript
+
+node_modules/
+npm-debug.log*
+.parcel-cache/
+*.log
+.next/
+.env.local
+yarn-debug.log*
