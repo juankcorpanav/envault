@@ -3,61 +3,60 @@ const http = require('http');
 const { parseEnv } = require('../secrets/envParser');
 
 /**
- * Fetches raw env content from a URL (http or https).
+ * Fetches env content from a remote URL (http or https).
  * @param {string} url
- * @returns {Promise<string>}
+ * @returns {Promise<string>} raw env file content
  */
 function fetchFromUrl(url) {
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https') ? https : http;
-    client
-      .get(url, (res) => {
-        if (res.statusCode < 200 || res.statusCode >= 300) {
-          return reject(new Error(`HTTP ${res.statusCode} fetching ${url}`));
-        }
-        let data = '';
-        res.on('data', (chunk) => (data += chunk));
-        res.on('end', () => resolve(data));
-      })
-      .on('error', reject);
+    client.get(url, (res) => {
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        return reject(new Error(`Failed to fetch from URL: HTTP ${res.statusCode}`));
+      }
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => resolve(data));
+    }).on('error', reject);
   });
 }
 
 /**
- * Imports env vars from a remote URL.
- * @param {string} url - URL returning raw .env content.
- * @returns {Promise<Object>} Parsed key-value pairs.
+ * Imports env variables from a JSON object or JSON string.
+ * @param {string|object} json
+ * @returns {object} parsed key-value env map
  */
-async function importFromUrl(url) {
-  const raw = await fetchFromUrl(url);
-  return parseEnv(raw);
+function importFromJson(json) {
+  try {
+    const parsed = typeof json === 'string' ? JSON.parse(json) : json;
+    if (typeof parsed !== 'object' || Array.isArray(parsed) || parsed === null) {
+      throw new Error('JSON input must be a plain object');
+    }
+    const result = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value !== 'string') {
+        throw new Error(`Value for key "${key}" must be a string`);
+      }
+      result[key] = value;
+    }
+    return result;
+  } catch (err) {
+    throw new Error(`importFromJson failed: ${err.message}`);
+  }
 }
 
 /**
- * Imports env vars from a JSON object (e.g. from a secrets manager API response).
- * Expects flat { key: value } structure.
- * @param {Object} jsonObj
- * @returns {Object}
- */
-function importFromJson(jsonObj) {
-  if (typeof jsonObj !== 'object' || jsonObj === null || Array.isArray(jsonObj)) {
-    throw new Error('importFromJson expects a plain object');
-  }
-  const result = {};
-  for (const [key, value] of Object.entries(jsonObj)) {
-    result[key] = String(value);
-  }
-  return result;
-}
-
-/**
- * Imports env vars from a base64-encoded .env string.
+ * Imports env variables from a Base64-encoded .env string.
  * @param {string} base64String
- * @returns {Object}
+ * @returns {object} parsed key-value env map
  */
 function importFromBase64(base64String) {
-  const decoded = Buffer.from(base64String, 'base64').toString('utf8');
-  return parseEnv(decoded);
+  try {
+    const decoded = Buffer.from(base64String, 'base64').toString('utf8');
+    return parseEnv(decoded);
+  } catch (err) {
+    throw new Error(`importFromBase64 failed: ${err.message}`);
+  }
 }
 
-module.exports = { fetchFromUrl, importFromUrl, importFromJson, importFromBase64 };
+module.exports = { fetchFromUrl, importFromJson, importFromBase64 };
