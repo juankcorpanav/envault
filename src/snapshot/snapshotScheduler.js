@@ -1,44 +1,55 @@
-const { createSnapshot } = require('./envSnapshot');
-const { readVault } = require('../vault/vaultAccess');
-const { logAuditEvent } = require('../audit/auditLog');
+import { createSnapshot } from './envSnapshot.js';
 
-const DEFAULT_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+/** @type {Map<string, { intervalId: ReturnType<typeof setInterval>, intervalMs: number }>} */
+const activeSchedules = new Map();
 
-const activeTimers = new Map();
-
-function scheduleSnapshot(vaultName, intervalMs = DEFAULT_INTERVAL_MS) {
-  if (activeTimers.has(vaultName)) {
-    clearInterval(activeTimers.get(vaultName));
+/**
+ * Schedule automatic snapshots for a vault at a fixed interval.
+ * If a schedule already exists for the vault, it is replaced.
+ * @param {string} vaultName
+ * @param {number} intervalMs - Interval in milliseconds
+ * @returns {{ vaultName: string, intervalMs: number, active: boolean }}
+ */
+export function scheduleSnapshot(vaultName, intervalMs) {
+  if (activeSchedules.has(vaultName)) {
+    clearInterval(activeSchedules.get(vaultName).intervalId);
   }
 
-  const timer = setInterval(() => {
+  const intervalId = setInterval(async () => {
     try {
-      const env = readVault(vaultName);
-      const snapshotId = createSnapshot(vaultName, env);
-      logAuditEvent({
-        action: 'scheduled_snapshot',
-        vault: vaultName,
-        snapshotId,
-        createdAt: new Date().toISOString(),
-      });
+      await createSnapshot(vaultName);
     } catch (err) {
-      console.error(`[snapshotScheduler] Failed to snapshot vault "${vaultName}": ${err.message}`);
+      console.error(`[snapshotScheduler] Failed to create snapshot for "${vaultName}": ${err.message}`);
     }
   }, intervalMs);
 
-  activeTimers.set(vaultName, timer);
-  return timer;
+  activeSchedules.set(vaultName, { intervalId, intervalMs });
+
+  return { vaultName, intervalMs, active: true };
 }
 
-function cancelSchedule(vaultName) {
-  if (!activeTimers.has(vaultName)) return false;
-  clearInterval(activeTimers.get(vaultName));
-  activeTimers.delete(vaultName);
+/**
+ * Cancel the scheduled snapshot for a vault.
+ * @param {string} vaultName
+ * @returns {boolean} true if a schedule was cancelled, false if none existed
+ */
+export function cancelSchedule(vaultName) {
+  if (!activeSchedules.has(vaultName)) {
+    return false;
+  }
+  clearInterval(activeSchedules.get(vaultName).intervalId);
+  activeSchedules.delete(vaultName);
   return true;
 }
 
-function listScheduled() {
-  return Array.from(activeTimers.keys());
+/**
+ * List all currently active snapshot schedules.
+ * @returns {Array<{ vaultName: string, intervalMs: number, active: boolean }>}
+ */
+export function listScheduled() {
+  return Array.from(activeSchedules.entries()).map(([vaultName, { intervalMs }]) => ({
+    vaultName,
+    intervalMs,
+    active: true
+  }));
 }
-
-module.exports = { scheduleSnapshot, cancelSchedule, listScheduled };
