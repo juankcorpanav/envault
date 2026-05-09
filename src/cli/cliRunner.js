@@ -19,6 +19,19 @@ Usage:
   envault import <vault> <passphrase> <payload>
 `;
 
+/**
+ * Safely parses a JSON string, throwing a user-friendly error on failure.
+ * @param {string} str - The JSON string to parse.
+ * @returns {*} The parsed value.
+ */
+function parsePayload(str) {
+  try {
+    return JSON.parse(str);
+  } catch {
+    throw new Error('Invalid JSON payload. Ensure the import payload is valid JSON.');
+  }
+}
+
 async function run(argv) {
   const [,, command, ...args] = argv;
 
@@ -67,7 +80,7 @@ async function run(argv) {
       case 'import': {
         const [vault, passphrase, payload] = args;
         if (!vault || !passphrase || !payload) throw new Error('Usage: envault import <vault> <passphrase> <payload>');
-        result = await cmdImport(vault, JSON.parse(payload), passphrase);
+        result = await cmdImport(vault, parsePayload(payload), passphrase);
         console.log(`Imported ${result.keys.length} key(s) into vault "${vault}".`);
         break;
       }
