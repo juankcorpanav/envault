@@ -68,4 +68,23 @@ function validateParsedEnv(parsed) {
   return { valid: errors.length === 0, errors };
 }
 
-module.exports = { validateKey, validateValue, validateParsedEnv };
+/**
+ * Checks for duplicate keys in a raw list of key-value pairs, which may occur
+ * when a .env file defines the same key more than once.
+ * @param {Array<[string, string]>} entries - Ordered list of [key, value] pairs.
+ * @returns {{ duplicates: string[] }} - List of keys that appear more than once.
+ */
+function findDuplicateKeys(entries) {
+  const seen = new Set();
+  const duplicates = new Set();
+  for (const [key] of entries) {
+    if (seen.has(key)) {
+      duplicates.add(key);
+    } else {
+      seen.add(key);
+    }
+  }
+  return { duplicates: Array.from(duplicates) };
+}
+
+module.exports = { validateKey, validateValue, validateParsedEnv, findDuplicateKeys };
