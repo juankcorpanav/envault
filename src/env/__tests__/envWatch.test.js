@@ -36,6 +36,11 @@ test('watchEnvFile throws if vault already watched', () => {
   );
 });
 
+test('watchEnvFile throws if file does not exist', () => {
+  const missingFile = path.join(tmpDir, 'nonexistent.env');
+  expect(() => watchEnvFile('missing-vault', missingFile, jest.fn())).toThrow();
+});
+
 test('unwatchEnvFile removes watcher and returns true', () => {
   watchEnvFile('rm-vault', tmpFile, jest.fn());
   const result = unwatchEnvFile('rm-vault');
