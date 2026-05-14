@@ -19,6 +19,10 @@ function compareSnapshots(vaultName, snapshotIdA, snapshotIdB) {
     throw new Error(`Snapshot not found: ${snapshotIdB}`);
   }
 
+  if (snapshotIdA === snapshotIdB) {
+    throw new Error(`Cannot compare a snapshot to itself: ${snapshotIdA}`);
+  }
+
   const envA = snapshotA.env || {};
   const envB = snapshotB.env || {};
 
@@ -41,6 +45,10 @@ function compareSnapshotToCurrent(vaultName, snapshotId, currentEnv) {
 
   if (!snapshot) {
     throw new Error(`Snapshot not found: ${snapshotId}`);
+  }
+
+  if (!currentEnv || typeof currentEnv !== 'object') {
+    throw new Error('currentEnv must be a non-null object');
   }
 
   const envA = snapshot.env || {};
