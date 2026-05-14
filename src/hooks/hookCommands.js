@@ -16,8 +16,13 @@ function registerHookCommands(program) {
     .description('List all registered hooks and their counts')
     .action(() => {
       const summary = listHooks();
+      const entries = Object.entries(summary);
+      if (entries.length === 0) {
+        console.log('No hooks registered.');
+        return;
+      }
       console.log('Registered hooks:');
-      for (const [event, count] of Object.entries(summary)) {
+      for (const [event, count] of entries) {
         console.log(`  ${event}: ${count} handler(s)`);
       }
     });
