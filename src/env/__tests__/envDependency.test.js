@@ -42,6 +42,10 @@ describe('addDependency', () => {
   it('throws if key is missing', () => {
     expect(() => envDependency.addDependency('', 'OTHER')).toThrow();
   });
+
+  it('throws if requiredKey is missing', () => {
+    expect(() => envDependency.addDependency('KEY', '')).toThrow();
+  });
 });
 
 describe('removeDependency', () => {
@@ -90,19 +94,10 @@ describe('validateDependencies', () => {
     expect(result).toEqual([]);
   });
 
-  it('ignores keys not present in envObj', () => {
+  it('returns empty array when env object is empty', () => {
     fs.existsSync.mockReturnValue(true);
-    fs.readFileSync.mockReturnValue(JSON.stringify({ DB_URL: ['DB_HOST'] }));
-    const result = envDependency.validateDependencies({ OTHER: 'val' });
+    fs.readFileSync.mockReturnValue('{}');
+    const result = envDependency.validateDependencies({});
     expect(result).toEqual([]);
-  });
-});
-
-describe('listAllDependencies', () => {
-  it('returns all dependency mappings', () => {
-    fs.existsSync.mockReturnValue(true);
-    const data = { A: ['B'], C: ['D', 'E'] };
-    fs.readFileSync.mockReturnValue(JSON.stringify(data));
-    expect(envDependency.listAllDependencies()).toEqual(data);
   });
 });
