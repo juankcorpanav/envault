@@ -49,6 +49,14 @@ describe('compare profiles command', () => {
     buildProgram().parse(['node', 'cli', 'compare', 'profiles', 'x', 'y']);
     expect(console.error).toHaveBeenCalledWith('Error: not found');
   });
+
+  it('does not print summary when --json flag is used', () => {
+    const diff = { removed: { OLD: '0' } };
+    envCompare.compareProfiles.mockReturnValue({ diff, summary: '- OLD' });
+    buildProgram().parse(['node', 'cli', 'compare', 'profiles', 'dev', 'prod', '--json']);
+    expect(console.log).toHaveBeenCalledTimes(1);
+    expect(console.log).toHaveBeenCalledWith(JSON.stringify(diff, null, 2));
+  });
 });
 
 describe('compare vaults command', () => {
@@ -57,6 +65,12 @@ describe('compare vaults command', () => {
     buildProgram().parse(['node', 'cli', 'compare', 'vaults', '/a/.env', '/b/.env']);
     expect(envCompare.compareVaults).toHaveBeenCalledWith('/a/.env', '/b/.env');
     expect(console.log).toHaveBeenCalledWith('+ NEW');
+  });
+
+  it('handles errors gracefully', () => {
+    envCompare.compareVaults.mockImplementation(() => { throw new Error('vault missing'); });
+    buildProgram().parse(['node', 'cli', 'compare', 'vaults', '/a/.env', '/b/.env']);
+    expect(console.error).toHaveBeenCalledWith('Error: vault missing');
   });
 });
 
