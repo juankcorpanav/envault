@@ -1,101 +1,97 @@
 const fs = require('fs');
 const path = require('path');
 
-jest.mock('fs');
-
-const EXPIRY_DIR = path.join(process.cwd(), '.envault', 'expiry');
-
 function freshModule() {
   jest.resetModules();
   return require('../envExpiry');
 }
 
 describe('envExpiry', () => {
-  let expiry;
-  const vault = 'myapp';
-  const filePath = path.join(EXPIRY_DIR, `${vault}.expiry.json`);
+  let tmpDir;
 
   beforeEach(() => {
-    jest.clearAllMocks();
-    fs.existsSync.mockReturnValue(true);
-    fs.readFileSync.mockReturnValue('{}');
-    fs.mkdirSync.mockImplementation(() => {});
-    fs.writeFileSync.mockImplementation(() => {});
-    expiry = freshModule();
+    tmpDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'envault-expiry-'));
+    jest.resetModules();
+    jest.doMock('path', () => ({
+      ...jest.requireActual('path'),
+      resolve: (...args) =>
+        args[0] === '.envault' ? path.join(tmpDir, ...args.slice(1)) : path.resolve(...args)
+    }));
   });
 
-  describe('setExpiry', () => {
-    it('should write expiry timestamp for a key', () => {
-      const before = Date.now();
-      const ts = expiry.setExpiry(vault, 'DB_PASS', 3600);
-      expect(ts).toBeGreaterThanOrEqual(before + 3600 * 1000);
-      expect(fs.writeFileSync).toHaveBeenCalledWith(
-        filePath,
-        expect.stringContaining('DB_PASS')
-      );
-    });
-
-    it('should throw if ttlSeconds is not a positive number', () => {
-      expect(() => expiry.setExpiry(vault, 'KEY', -1)).toThrow();
-      expect(() => expiry.setExpiry(vault, 'KEY', 0)).toThrow();
-      expect(() => expiry.setExpiry(vault, 'KEY', 'abc')).toThrow();
-    });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    jest.restoreAllMocks();
   });
 
-  describe('removeExpiry', () => {
-    it('should remove an existing expiry entry', () => {
-      fs.readFileSync.mockReturnValue(JSON.stringify({ DB_PASS: Date.now() + 9999 }));
-      const result = expiry.removeExpiry(vault, 'DB_PASS');
-      expect(result).toBe(true);
-      expect(fs.writeFileSync).toHaveBeenCalled();
-    });
-
-    it('should return false if key has no expiry', () => {
-      const result = expiry.removeExpiry(vault, 'NO_EXPIRY_KEY');
-      expect(result).toBe(false);
-    });
+  test('setExpiry and loadExpiry persist data', () => {
+    const { setExpiry, loadExpiry } = freshModule();
+    const future = new Date(Date.now() + 100000);
+    setExpiry('myvault', 'API_KEY', future);
+    const data = loadExpiry('myvault');
+    expect(data['API_KEY']).toBe(future.toISOString());
   });
 
-  describe('isExpired', () => {
-    it('should return true for a past timestamp', () => {
-      fs.readFileSync.mockReturnValue(JSON.stringify({ OLD_KEY: Date.now() - 1000 }));
-      expect(expiry.isExpired(vault, 'OLD_KEY')).toBe(true);
-    });
-
-    it('should return false for a future timestamp', () => {
-      fs.readFileSync.mockReturnValue(JSON.stringify({ FRESH_KEY: Date.now() + 100000 }));
-      expect(expiry.isExpired(vault, 'FRESH_KEY')).toBe(false);
-    });
-
-    it('should return false if key has no expiry set', () => {
-      expect(expiry.isExpired(vault, 'UNKNOWN')).toBe(false);
-    });
+  test('setExpiry throws on invalid date', () => {
+    const { setExpiry } = freshModule();
+    expect(() => setExpiry('myvault', 'KEY', new Date('not-a-date'))).toThrow(
+      /Invalid expiry date/
+    );
   });
 
-  describe('listExpiredKeys', () => {
-    it('should return only expired keys', () => {
-      fs.readFileSync.mockReturnValue(JSON.stringify({
-        EXPIRED: Date.now() - 5000,
-        ACTIVE: Date.now() + 5000,
-      }));
-      const result = expiry.listExpiredKeys(vault);
-      expect(result).toEqual(['EXPIRED']);
-    });
+  test('removeExpiry removes the key and returns true', () => {
+    const { setExpiry, removeExpiry, loadExpiry } = freshModule();
+    setExpiry('myvault', 'SECRET', new Date(Date.now() + 50000));
+    const result = removeExpiry('myvault', 'SECRET');
+    expect(result).toBe(true);
+    expect(loadExpiry('myvault')['SECRET']).toBeUndefined();
   });
 
-  describe('listExpiryEntries', () => {
-    it('should return enriched entries with expired flag', () => {
-      fs.readFileSync.mockReturnValue(JSON.stringify({
-        A: Date.now() - 1000,
-        B: Date.now() + 100000,
-      }));
-      const entries = expiry.listExpiryEntries(vault);
-      expect(entries).toHaveLength(2);
-      const a = entries.find(e => e.key === 'A');
-      const b = entries.find(e => e.key === 'B');
-      expect(a.expired).toBe(true);
-      expect(b.expired).toBe(false);
-      expect(typeof a.expiresAt).toBe('string');
-    });
+  test('removeExpiry returns false when key not found', () => {
+    const { removeExpiry } = freshModule();
+    expect(removeExpiry('myvault', 'NONEXISTENT')).toBe(false);
+  });
+
+  test('isExpired returns true for past date', () => {
+    const { setExpiry, isExpired } = freshModule();
+    setExpiry('myvault', 'OLD_KEY', new Date(Date.now() - 1000));
+    expect(isExpired('myvault', 'OLD_KEY')).toBe(true);
+  });
+
+  test('isExpired returns false for future date', () => {
+    const { setExpiry, isExpired } = freshModule();
+    setExpiry('myvault', 'FUTURE_KEY', new Date(Date.now() + 100000));
+    expect(isExpired('myvault', 'FUTURE_KEY')).toBe(false);
+  });
+
+  test('isExpired returns false when no expiry set', () => {
+    const { isExpired } = freshModule();
+    expect(isExpired('myvault', 'NO_EXPIRY')).toBe(false);
+  });
+
+  test('listExpired returns only expired entries', () => {
+    const { setExpiry, listExpired } = freshModule();
+    setExpiry('myvault', 'PAST', new Date(Date.now() - 1000));
+    setExpiry('myvault', 'FUTURE', new Date(Date.now() + 100000));
+    const expired = listExpired('myvault');
+    expect(expired).toHaveLength(1);
+    expect(expired[0].key).toBe('PAST');
+  });
+
+  test('listExpiry returns all entries with expired flag', () => {
+    const { setExpiry, listExpiry } = freshModule();
+    setExpiry('myvault', 'PAST', new Date(Date.now() - 1000));
+    setExpiry('myvault', 'FUTURE', new Date(Date.now() + 100000));
+    const all = listExpiry('myvault');
+    expect(all).toHaveLength(2);
+    const past = all.find((e) => e.key === 'PAST');
+    const future = all.find((e) => e.key === 'FUTURE');
+    expect(past.expired).toBe(true);
+    expect(future.expired).toBe(false);
+  });
+
+  test('loadExpiry returns empty object when no file', () => {
+    const { loadExpiry } = freshModule();
+    expect(loadExpiry('nonexistent')).toEqual({});
   });
 });

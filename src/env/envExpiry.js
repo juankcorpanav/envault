@@ -1,11 +1,7 @@
-/**
- * envExpiry.js — Key-level expiry/TTL support for env entries
- */
-
 const fs = require('fs');
 const path = require('path');
 
-const EXPIRY_DIR = path.join(process.cwd(), '.envault', 'expiry');
+const EXPIRY_DIR = path.resolve('.envault', 'expiry');
 
 function ensureExpiryDir() {
   if (!fs.existsSync(EXPIRY_DIR)) {
@@ -14,62 +10,57 @@ function ensureExpiryDir() {
 }
 
 function expiryFilePath(vaultName) {
-  return path.join(EXPIRY_DIR, `${vaultName}.expiry.json`);
+  return path.join(EXPIRY_DIR, `${vaultName}.json`);
 }
 
 function loadExpiry(vaultName) {
-  const filePath = expiryFilePath(vaultName);
-  if (!fs.existsSync(filePath)) return {};
-  try {
-    return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-  } catch {
-    return {};
-  }
+  const file = expiryFilePath(vaultName);
+  if (!fs.existsSync(file)) return {};
+  return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
 
-function saveExpiry(vaultName, expiryMap) {
+function saveExpiry(vaultName, data) {
   ensureExpiryDir();
-  fs.writeFileSync(expiryFilePath(vaultName), JSON.stringify(expiryMap, null, 2));
+  fs.writeFileSync(expiryFilePath(vaultName), JSON.stringify(data, null, 2));
 }
 
-function setExpiry(vaultName, key, ttlSeconds) {
-  if (typeof ttlSeconds !== 'number' || ttlSeconds <= 0) {
-    throw new Error('ttlSeconds must be a positive number');
+function setExpiry(vaultName, key, expiresAt) {
+  if (!(expiresAt instanceof Date) || isNaN(expiresAt.getTime())) {
+    throw new Error(`Invalid expiry date for key "${key}"`);
   }
-  const expiryMap = loadExpiry(vaultName);
-  expiryMap[key] = Date.now() + ttlSeconds * 1000;
-  saveExpiry(vaultName, expiryMap);
-  return expiryMap[key];
+  const data = loadExpiry(vaultName);
+  data[key] = expiresAt.toISOString();
+  saveExpiry(vaultName, data);
 }
 
 function removeExpiry(vaultName, key) {
-  const expiryMap = loadExpiry(vaultName);
-  if (!(key in expiryMap)) return false;
-  delete expiryMap[key];
-  saveExpiry(vaultName, expiryMap);
+  const data = loadExpiry(vaultName);
+  if (!Object.prototype.hasOwnProperty.call(data, key)) return false;
+  delete data[key];
+  saveExpiry(vaultName, data);
   return true;
 }
 
 function isExpired(vaultName, key) {
-  const expiryMap = loadExpiry(vaultName);
-  if (!(key in expiryMap)) return false;
-  return Date.now() > expiryMap[key];
+  const data = loadExpiry(vaultName);
+  if (!data[key]) return false;
+  return new Date(data[key]) <= new Date();
 }
 
-function listExpiredKeys(vaultName) {
-  const expiryMap = loadExpiry(vaultName);
-  const now = Date.now();
-  return Object.entries(expiryMap)
-    .filter(([, ts]) => now > ts)
-    .map(([key]) => key);
+function listExpired(vaultName) {
+  const data = loadExpiry(vaultName);
+  const now = new Date();
+  return Object.entries(data)
+    .filter(([, iso]) => new Date(iso) <= now)
+    .map(([key, iso]) => ({ key, expiresAt: iso }));
 }
 
-function listExpiryEntries(vaultName) {
-  const expiryMap = loadExpiry(vaultName);
-  return Object.entries(expiryMap).map(([key, ts]) => ({
+function listExpiry(vaultName) {
+  const data = loadExpiry(vaultName);
+  return Object.entries(data).map(([key, iso]) => ({
     key,
-    expiresAt: new Date(ts).toISOString(),
-    expired: Date.now() > ts,
+    expiresAt: iso,
+    expired: new Date(iso) <= new Date()
   }));
 }
 
@@ -81,6 +72,6 @@ module.exports = {
   setExpiry,
   removeExpiry,
   isExpired,
-  listExpiredKeys,
-  listExpiryEntries,
+  listExpired,
+  listExpiry
 };
