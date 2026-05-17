@@ -17,7 +17,11 @@ function historyPath(vaultName) {
 function loadHistory(vaultName) {
   const p = historyPath(vaultName);
   if (!fs.existsSync(p)) return [];
-  return JSON.parse(fs.readFileSync(p, 'utf8'));
+  try {
+    return JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch (err) {
+    throw new Error(`Failed to parse history file for vault "${vaultName}": ${err.message}`);
+  }
 }
 
 function saveHistory(vaultName, entries) {
